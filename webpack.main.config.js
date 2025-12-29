@@ -14,4 +14,8 @@ module.exports = {
       'utf-8-validate': false,
     },
   },
+  externals: {
+    // Keep playwright-core as external - it will be unpacked from ASAR
+    'playwright-core': 'commonjs2 playwright-core',
+  },
 };
