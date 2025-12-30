@@ -1,11 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  startAutomation: () => ipcRenderer.invoke('start-automation'),
+  startAutomation: ({ url, prompt }) =>
+    ipcRenderer.invoke('start-automation', { url, prompt }),
   stopAutomation: () => ipcRenderer.invoke('stop-automation'),
-  approveAndFill: (mapping) => ipcRenderer.invoke('approve-and-fill', mapping),
+  approveAndSubmit: () => ipcRenderer.invoke('approve-and-submit'),
   finalSubmit: () => ipcRenderer.invoke('final-submit'),
-  editField: (data) => ipcRenderer.invoke('edit-field', data),
+
+  // NEW: Resume after CAPTCHA
+  resumeAfterCaptcha: () => ipcRenderer.invoke('resume-after-captcha'),
+
+  // NEW: Submit OTP
+  submitOtp: (otpCode) => ipcRenderer.invoke('submit-otp', otpCode),
 
   onStatusUpdate: (callback) => {
     ipcRenderer.on('status-update', (event, data) => callback(data));
@@ -13,5 +19,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onFormPreview: (callback) => {
     ipcRenderer.on('form-preview', (event, data) => callback(data));
+  },
+
+  onCaptchaDetected: (callback) => {
+    ipcRenderer.on('captcha-detected', (event, data) => callback(data));
+  },
+
+  onOtpRequired: (callback) => {
+    ipcRenderer.on('otp-required', (event, data) => callback(data));
   },
 });
