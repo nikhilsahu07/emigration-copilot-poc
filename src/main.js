@@ -1,4 +1,10 @@
 const { app, BrowserWindow, BrowserView, ipcMain } = require('electron');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+require('dotenv').config();
+
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
 let chromium;
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -8,10 +14,22 @@ let browserView;
 let page = null;
 let browser = null;
 
+// User data (in production, load from database)
+const userData = {
+  planType: 'Individual',
+  name: 'John Doe',
+  emailId: 'john.doe@example.com',
+  insuranceCover: '5 Lakhs',
+  dateOfBirth: '1990-05-15',
+  gender: 'Male',
+  pincode: '10001',
+  mobileNo: '+919810375969',
+  tenure: '1 Year',
+};
 const createWindow = () => {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: 1600,
+    height: 1000,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -21,7 +39,6 @@ const createWindow = () => {
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Only open DevTools in development
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
@@ -38,13 +55,15 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// START AI-POWERED AUTOMATION
 ipcMain.handle('start-automation', async () => {
   try {
-    console.log('Starting automation...');
+    console.log('🤖 Starting AI-powered automation...');
 
+    // Create BrowserView
     browserView = new BrowserView({
       webPreferences: {
-        nodeIntegration: false,
+        nodeIntegulation: false,
         contextIsolation: true,
       },
     });
@@ -53,9 +72,9 @@ ipcMain.handle('start-automation', async () => {
 
     const bounds = mainWindow.getBounds();
     browserView.setBounds({
-      x: 400,
+      x: 450,
       y: 0,
-      width: bounds.width - 400,
+      width: bounds.width - 450,
       height: bounds.height,
     });
 
@@ -63,22 +82,23 @@ ipcMain.handle('start-automation', async () => {
       if (browserView) {
         const newBounds = mainWindow.getBounds();
         browserView.setBounds({
-          x: 400,
+          x: 450,
           y: 0,
-          width: newBounds.width - 400,
+          width: newBounds.width - 450,
           height: newBounds.height,
         });
       }
     });
 
-    // Load URL
-    await browserView.webContents.loadURL('https://raghuvartech.com/contact/');
-    sendStatus('Page loaded', 10);
-
-    // Wait for page to fully load
+    // Load target page
+    sendStatus('Loading page...', 5);
+    await browserView.webContents.loadURL(
+      'https://testing.thepolicymall.com/health-insurance'
+    );
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Connect Playwright
+    sendStatus('Connecting to browser...', 10);
     if (!chromium) {
       chromium = require('playwright-core').chromium;
     }
@@ -86,87 +106,193 @@ ipcMain.handle('start-automation', async () => {
     browser = await chromium.connectOverCDP('http://localhost:9222');
     const context = browser.contexts()[0];
     const pages = context.pages();
-    console.log(`Found ${pages.length} pages`);
 
-    // CRITICAL FIX: Find the correct page by URL
     page = null;
     for (const p of pages) {
-      const url = p.url();
-      console.log(`Page URL: ${url}`);
-      if (url.includes('raghuvartech.com/contact')) {
+      if (p.url().includes('testing.thepolicymall.com/health-insurance')) {
         page = p;
-        console.log('✅ Found RaghuvarTech contact page!');
         break;
       }
     }
 
     if (!page) {
-      throw new Error(
-        'Could not find RaghuvarTech contact page among open pages'
-      );
+      throw new Error('Could not find target page');
     }
 
     await page.waitForLoadState('domcontentloaded');
-    sendStatus('Connected to form page', 15);
+    sendStatus('Page loaded successfully', 15);
 
-    // Scroll to contact form
-    await page.evaluate(() => {
-      const form = document.getElementById('contactform');
-      if (form) {
-        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Start AI processing
+    await processPageWithAI();
+  } catch (error) {
+    console.error('Automation error:', error);
+    sendStatus(`Error: ${error.message}`, 0);
+  }
+});
+
+// AI PROCESSING FUNCTION
+async function processPageWithAI() {
+  try {
+    sendStatus('🤖 AI analyzing form structure...', 20);
+
+    // Extract HTML structure
+    const htmlStructure = await page.evaluate(() => {
+      // Get form HTML
+      const form = document.querySelector('form, .uagb-forms-main-form');
+      if (!form) return { error: 'No form found' };
+
+      // Extract all input fields
+      const inputs = Array.from(
+        form.querySelectorAll('input, textarea, select')
+      );
+
+      return {
+        formHTML: form.outerHTML.substring(0, 10000), // Limit to 10k chars
+        fields: inputs.map((el, idx) => ({
+          index: idx,
+          tagName: el.tagName.toLowerCase(),
+          type: el.type || 'text',
+          name: el.name,
+          id: el.id,
+          placeholder: el.placeholder,
+          required: el.required,
+          className: el.className,
+          ariaLabel: el.getAttribute('aria-label'),
+          labelText: getLabelText(el),
+        })),
+      };
+
+      function getLabelText(element) {
+        // Try to find associated label
+        if (element.id) {
+          const label = document.querySelector(`label[for="${element.id}"]`);
+          if (label) return label.textContent.trim();
+        }
+
+        // Try parent label
+        const parentLabel = element.closest('label');
+        if (parentLabel) return parentLabel.textContent.trim();
+
+        // Try preceding sibling
+        const prevSibling = element.previousElementSibling;
+        if (prevSibling && prevSibling.tagName === 'LABEL') {
+          return prevSibling.textContent.trim();
+        }
+
+        // Try div with class containing 'label'
+        const labelDiv = element.closest('[class*="label"]');
+        if (labelDiv) return labelDiv.textContent.trim();
+
+        return '';
       }
     });
 
-    await page.waitForTimeout(2000);
-    sendStatus('Scrolled to form', 20);
+    if (htmlStructure.error) {
+      throw new Error(htmlStructure.error);
+    }
 
-    // Wait for form to be visible
-    await page.waitForSelector('input[name="your-first-name"]', {
-      state: 'visible',
-      timeout: 15000,
-    });
+    console.log('📋 Extracted form structure:', htmlStructure);
+    sendStatus('🤖 Sending to Gemini AI...', 30);
 
-    // Form data
-    const formData = [
-      {
-        selector: 'input[name="your-first-name"]',
-        value: 'John',
-        label: 'First Name',
-      },
-      {
-        selector: 'input[name="your-last-name"]',
-        value: 'Doe',
-        label: 'Last Name',
-      },
-      {
-        selector: 'input[name="your-email"]',
-        value: 'john.doe@example.com',
-        label: 'Email',
-      },
-      {
-        selector: 'input[name="your-phone"]',
-        value: '+919810375969',
-        label: 'Phone',
-      },
-      {
-        selector: 'textarea[name="your-message"]',
-        value:
-          'This is an automated test message from Electron Playwright demo!',
-        label: 'Message',
-      },
-    ];
+    // Generate AI prompt
+    const prompt = `You are a form-filling AI assistant. Analyze this HTML form and map user data to form fields.
 
-    for (let i = 0; i < formData.length; i++) {
-      const field = formData[i];
+**User Data:**
+${JSON.stringify(userData, null, 2)}
 
-      console.log(`Filling field ${i + 1}/${formData.length}: ${field.label}`);
+**Form Structure:**
+${JSON.stringify(htmlStructure.fields, null, 2)}
+
+**Instructions:**
+1. Match each form field to the most appropriate user data field
+2. Use field name, placeholder, label, and type to infer meaning
+3. Return ONLY valid JSON (no markdown, no explanations)
+4. For fields with no matching data, use empty string
+5. Identify the submit button
+
+**Return this EXACT JSON structure:**
+{
+  "fields": [
+    {
+      "fieldIndex": 0,
+      "fieldName": "name attribute or id",
+      "fieldLabel": "human readable label",
+      "selector": "most reliable CSS selector (prefer name, then id, then class)",
+      "value": "the value to fill",
+      "confidence": "high|medium|low",
+      "reasoning": "why this mapping makes sense"
+    }
+  ],
+  "submitButton": {
+    "selector": "CSS selector for submit button",
+    "text": "button text"
+  }
+}
+
+Return ONLY the JSON, nothing else.`;
+
+    // Call Gemini API
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let aiResponse = response.text();
+
+    console.log('🤖 Raw Gemini Response:', aiResponse);
+
+    // Clean up response (remove markdown code blocks if present)
+    aiResponse = aiResponse.replace(/``````\n?/g, '').trim();
+
+    let formMapping;
+    try {
+      formMapping = JSON.parse(aiResponse);
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', aiResponse);
+      throw new Error('AI returned invalid JSON. Please try again.');
+    }
+
+    sendStatus('✅ AI analysis complete', 40);
+    console.log('🎯 Form Mapping:', formMapping);
+
+    // Send to renderer for user approval
+    sendFormPreview(formMapping);
+  } catch (error) {
+    console.error('AI processing error:', error);
+    sendStatus(`AI Error: ${error.message}`, 0);
+  }
+}
+
+// Send form preview to renderer
+function sendFormPreview(formMapping) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('form-preview', formMapping);
+  }
+  sendStatus('⏸️ Awaiting your approval...', 50);
+}
+
+// User approved - fill the form
+ipcMain.handle('approve-and-fill', async (event, approvedMapping) => {
+  try {
+    console.log('✅ User approved, filling form...');
+    sendStatus('Filling form fields...', 60);
+
+    // Fill each field
+    for (let i = 0; i < approvedMapping.fields.length; i++) {
+      const field = approvedMapping.fields[i];
+
+      if (!field.value || field.value === '') {
+        console.log(`⏭️ Skipping empty field: ${field.fieldLabel}`);
+        continue;
+      }
 
       try {
+        console.log(`📝 Filling: ${field.fieldLabel} = "${field.value}"`);
+
+        // Wait for field to be visible
         await page.waitForSelector(field.selector, {
           state: 'visible',
           timeout: 5000,
         });
 
+        // Scroll into view
         await page.evaluate((selector) => {
           const el = document.querySelector(selector);
           if (el) {
@@ -174,63 +300,99 @@ ipcMain.handle('start-automation', async () => {
           }
         }, field.selector);
 
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
-        // Clear and fill
-        await page.fill(field.selector, ''); // Clear first
-        await page.waitForTimeout(200);
+        // Fill the field
         await page.fill(field.selector, field.value);
 
-        const progress = Math.round(20 + ((i + 1) / formData.length) * 50);
-        sendStatus(`✅ Filled: ${field.label}`, progress);
+        const progress =
+          60 + Math.round((i / approvedMapping.fields.length) * 30);
+        sendStatus(`✅ Filled: ${field.fieldLabel}`, progress);
 
-        await page.waitForTimeout(1200);
-      } catch (error) {
-        console.error(`❌ Error filling ${field.label}:`, error.message);
-        sendStatus(
-          `❌ Error on ${field.label}`,
-          Math.round(20 + ((i + 1) / formData.length) * 50)
+        await page.waitForTimeout(800);
+      } catch (fieldError) {
+        console.error(
+          `❌ Error filling ${field.fieldLabel}:`,
+          fieldError.message
         );
-        throw error; // Stop on error
+        sendStatus(`⚠️ Skipped: ${field.fieldLabel}`, 0);
       }
     }
 
-    // Pause for CAPTCHA
-    sendStatus(
-      '⚠️ Please solve the hCaptcha - Click Approve when done',
-      75,
-      true
-    );
-    console.log('Automation paused for hCaptcha');
+    sendStatus('✅ Form filled! Ready to submit', 90, true);
   } catch (error) {
-    console.error('Automation error:', error);
-    sendStatus(`Error: ${error.message}`, 0);
+    console.error('Fill error:', error);
+    sendStatus(`Fill Error: ${error.message}`, 0);
   }
 });
 
-ipcMain.handle('approve-submit', async () => {
-  if (page) {
-    try {
-      console.log('User approved, submitting form...');
+// Final submit
+ipcMain.handle('final-submit', async () => {
+  try {
+    console.log('📤 Submitting form...');
+    sendStatus('Submitting form...', 95);
 
-      // Find submit button
-      await page.waitForSelector('input[type="submit"]', { timeout: 5000 });
-      await page.click('input[type="submit"]');
+    // Click submit button (AI should have provided selector)
+    const submitSelector =
+      'button.uagb-forms-main-submit-button, button[type="submit"], input[type="submit"]';
 
-      sendStatus('Form submitted successfully! ✅', 100);
-      await page.waitForTimeout(3000);
+    await page.waitForSelector(submitSelector, { timeout: 5000 });
+
+    await page.evaluate((selector) => {
+      const btn = document.querySelector(selector);
+      if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, submitSelector);
+
+    await page.waitForTimeout(1000);
+    await page.click(submitSelector);
+
+    sendStatus('✅ Form submitted successfully!', 100);
+    await page.waitForTimeout(3000);
+
+    // Check for next page or success message
+    const hasNextPage = await checkForNextPage();
+    if (hasNextPage) {
+      sendStatus('🔄 Next page detected, restarting AI analysis...', 10);
+      await processPageWithAI(); // Recursive: process next page
+    } else {
       await cleanup();
-    } catch (error) {
-      console.error('Submit error:', error);
-      sendStatus(`Submit error: ${error.message}`, 0);
     }
+  } catch (error) {
+    console.error('Submit error:', error);
+    sendStatus(`Submit Error: ${error.message}`, 0);
   }
 });
+
+// Check if there's a next page
+async function checkForNextPage() {
+  try {
+    // Wait a bit for page transition
+    await page.waitForTimeout(2000);
+
+    // Check for "Next" button or new form
+    const hasNext = await page.evaluate(() => {
+      const nextBtn = document.querySelector(
+        'button:has-text("Next"), button:has-text("Continue"), .next-page'
+      );
+      return !!nextBtn;
+    });
+
+    return hasNext;
+  } catch {
+    return false;
+  }
+}
 
 ipcMain.handle('stop-automation', async () => {
   console.log('Stopping automation...');
   await cleanup();
   sendStatus('Automation stopped', 0);
+});
+
+ipcMain.handle('edit-field', async (event, { fieldIndex, newValue }) => {
+  console.log(`User edited field ${fieldIndex}: "${newValue}"`);
+  // Field edits are handled in renderer and sent back in approve-and-fill
+  return { success: true };
 });
 
 function sendStatus(message, progress, needsApproval = false) {
